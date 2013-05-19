@@ -191,6 +191,26 @@
   };
 
 
+  var PredMatcher = function(pred, yay, nay) {
+    this.pred_ = pred;
+    this.yay_ = yay;
+    this.nay_ = nay;
+  };
+  PredMatcher.make = function() { return new PredMatcher(); };
+
+  PredMatcher.prototype.matchAndDescribe = function(val, logger) {
+    return this.pred_(val);
+  };
+
+  PredMatcher.prototype.describeTo = function(logger) {
+    logger(this.yay_);
+  };
+
+  PredMatcher.prototype.describeNegationTo = function(logger) {
+    logger(this.nay_);
+  };
+
+
   /** Null matcher; matches null and only null. */
   var Null = Eq.make(null);
 
@@ -278,10 +298,9 @@
   };
 
   /**
-   * Contains matcher; expects val contains something matching matcher.
+   * Array-equality matcher.
    *
-   * NOTE: If the matched object is an object with a property "length", this
-   * method will assume it is an array-like object.
+   * Matches one array with an array of values and/or matchers.
    */
   var EqArray = function(arr) {
     this.arr_ = arr;
@@ -298,17 +317,26 @@
              this.arr_.length);
       return false;
     }
+    var header = false;
     for (var i = 0; i < this.arr_.length; i++) {
       var ithMatcher = ensureIsMatcher(this.arr_[i]);
-      var logObj = thatHelper(val[i], ithMatcher);
-      if (logObj) {
-        logger('which doesn\'t match at at index ', i, ': <\n  ');
-        logObj.logTo(IndentLines(2, logger));
-        logger('\n>');
-        return false;
+      var logObj = new StringLogger();
+      if (!ithMatcher.matchAndDescribe(val[i], logObj.logFn.bind(logObj))) {
+        if (!header) {
+          logger('which doesn\'t match at these indices:\n');
+          header = true;
+        } else {
+          logger(',\n');
+        }
+        logger('index ', i);
+        if (logObj.contents()) {
+          logger(' ');
+          logObj.logTo(logger);
+        }
       }
     }
-    return true;
+    // TODO: describe matches for success case (in case negated).
+    return !header;
   };
 
   EqArray.prototype.describeTo = function(logger) {
@@ -319,6 +347,158 @@
   EqArray.prototype.describeNegationTo = function(logger) {
     logger('is an array different than ');
     Stringifier.print(this.arr_, logger);
+  };
+
+
+  /**
+   * Key/Value matchers.
+   */
+  var KeyValIgnoreSentinel = new Object();
+
+  var KeyValImpl = function(key, val) {
+    this.key_ = key;
+    this.val_ = val;
+  };
+  KeyValImpl.make = function(k, v) { return new KeyValImpl(k, v); };
+
+  KeyValImpl.prototype.matchAndDescribe = function(val, logger) {
+    var key = val.key;
+    var val = val.val;
+    if (this.key_ != KeyValIgnoreSentinel) {
+      var keyLogger = new StringLogger();
+      if (!ensureIsMatcher(this.key_).matchAndDescribe(
+              key, keyLogger.logFn.bind(keyLogger))) {
+        if (keyLogger.contents()) {
+          logger('whose key ');
+          keyLogger.logTo(logger);
+        }
+        return false;
+      }
+    }
+    if (this.val_ != KeyValIgnoreSentinel) {
+      var valLogger = new StringLogger();
+      if (!ensureIsMatcher(this.val_).matchAndDescribe(
+              val, valLogger.logFn.bind(valLogger))) {
+        if (valLogger.contents()) {
+          logger('whose value ');
+          val.logTo(logger);
+        }
+        return false;
+      }
+    }
+    return true;
+  };
+
+  KeyValImpl.prototype.describeTo = function(logger) {
+    logger('is a key/value ');
+    if (this.key == KeyValIgnoreSentinel) {
+      logger('with value ');
+      Stringifier.print(this.val_, logger);
+    } else if (this.val == KeyValIgnoreSentinel) {
+      logger('with key ');
+      Stringifier.print(this.key_, logger);
+    } else {
+      logger('(');
+      Stringifier.print(this.key_, logger);
+      logger(', ');
+      Stringifier.print(this.val_, logger);
+      logger(')');
+    }
+  };
+
+  KeyValImpl.prototype.describeNegationTo = function(logger) {
+    logger('is a key/value ');
+    if (this.key == KeyValIgnoreSentinel) {
+      logger('with value different from ');
+      Stringifier.print(this.val_, logger);
+    } else if (this.val == KeyValIgnoreSentinel) {
+      logger('with key different from ');
+      Stringifier.print(this.key_, logger);
+    } else {
+      logger('different from (');
+      Stringifier.print(this.key_, logger);
+      logger(', ');
+      Stringifier.print(this.val_, logger);
+      logger(')');
+    }
+  };
+
+
+  /**
+   * Dict matcher.
+   */
+  var EqDict = function(dict) {
+    if (arguments.length > 1 || isMatcher(dict)) {
+      this.matchers_ = Array.prototype.slice.apply(arguments);
+    } else {
+      this.dict_ = dict;
+    }
+  };
+  EqDict.make = function(d) { return new EqDict(d); };
+
+  EqDict.prototype.matchAndDescribe = function(val, logger) {
+    var keys = Object.keys(val);
+    var matchedKeys = {};
+    var unexpected = [];
+    var header = false;
+    var matched = true;
+    for (var i = 0; i < keys.length; i++) {
+      if (this.dict_) {
+        var key = keys[i];
+        if (key in this.dict_) {
+          var keyMatch = ensureIsMatcher(this.dict_[key]);
+          var valLogger = new StringLogger();
+          matchedKeys[key] = true;
+          if (!keyMatch.matchAndDescribe(val[key], valLogger.logFn.bind(valLogger))) {
+            matched = false;
+            if (!header) {
+              logger('which doesn\'t match for these keys:\n');
+              header = true;
+            } else {
+              logger(',\n');
+            }
+            logger('key ', key);
+            if (valLogger.contents()) {
+              logger(' ');
+              valLogger.logTo(logger);
+            }
+          }
+        } else {
+          unexpected.push(key);
+        }
+      } else {
+        throw 'Whoops, have yet to implement KeyVal matchers';
+      }
+    }
+    if (unexpected.length) {
+      matched = false;
+      logger('which had unexpected keys ');
+      Stringifier.print(unexpected, logger);
+    }
+    if (this.dict_) {
+      var missing = Object.keys(this.dict_);
+      missing = missing.filter(function(k) { return !(k in matchedKeys); });
+      if (missing.length) {
+        matched = false;
+        logger('which didn\'t have expected keys ');
+        Stringifier.print(missing, logger);
+      }
+    }
+    return matched;
+  };
+
+  EqDict.prototype.describeTo = function(logger) {
+    if (this.dict_) {
+      logger('is an object with elements ');
+      Stringifier.print(this.dict_, logger);
+    }
+  };
+
+  EqDict.prototype.describeNegationTo = function(logger) {
+    if (this.dict_) {
+      logger('is an object different than ');
+      Stringifier.print(this.dict_, logger);
+    }
   };
 
 
@@ -371,12 +551,30 @@
 
   exports._ = Ignore.make();
   exports.Eq = Eq.make;
+  exports.Le = function(v) {
+    return new PredMatcher(
+      function(t) { return t <= v; },
+      'is less than or equal to ' + v,
+      'is greater than ' + v);
+  };
+  exports.Lt = function(v) {
+    return new PredMatcher(
+      function(t) { return t < v; },
+      'is less than ' + v,
+      'is greater than or equal to ' + v);
+  };
+  exports.Ge = function(v) { return new Not(exports.Lt(v)); };
+  exports.Gt = function(v) { return new Not(exports.Le(v)); };
   exports.Not = Not.make;
   exports.Null = Null;
   exports.Undefined = Undefined;
   exports.Contains = Contains.make;
   exports.Length = Length.make;
   exports.EqArray = EqArray.make;
+  exports.KeyVal = KeyValImpl.make;
+  exports.Key = function(k) { return new KeyValImpl(k, KeyValIgnoreSentinel); };
+  exports.Val = function(v) { return new KeyValImpl(KeyValIgnoreSentinel, v); };
+  exports.EqDict = EqDict.make;
 
   exports.that = that;
   exports.assertThat = assertThat;

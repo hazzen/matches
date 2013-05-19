@@ -10,6 +10,18 @@
         assertThat(5, Eq(6));
       } catch (e) {};
       try {
+        assertThat(9, Gt(9));
+      } catch (e) {};
+      try {
+        assertThat(8, Ge(9));
+      } catch (e) {};
+      try {
+        assertThat(9, Lt(9));
+      } catch (e) {};
+      try {
+        assertThat(9, Le(8));
+      } catch (e) {};
+      try {
         assertThat('asfd', Contains(Eq('z')));
       } catch (e) {};
       try {
@@ -31,10 +43,31 @@
         assertThat([1, 2, 3], EqArray([_, _, 4]));
       } catch (e) {};
       try {
+        assertThat([1, 2, 3], EqArray([_, _, Lt(2)]));
+      } catch (e) {};
+      try {
         assertThat([[0, 1], 2, 3], EqArray([EqArray([0, 1]), _, 4]));
       } catch (e) {};
       try {
         assertThat([[0, 1], 2, [3, 4]], EqArray([EqArray([0, 1]), _, EqArray([4, 5])]));
+      } catch (e) {};
+      try {
+        assertThat({a: 1, b: 2, c: 3}, Keys(EqArray(['a', 'b', 'd'])));
+      } catch (e) {};
+      try {
+        assertThat({a: 1, b: 2, c: 3}, EqDict({a: 1, b: 2, c: 4}));
+      } catch (e) {};
+      try {
+        assertThat({a: 1, b: 2}, EqDict({a: 1, b: 2, c: 4}));
+      } catch (e) {};
+      try {
+        assertThat({a: 1, b: 2, c: 3}, EqDict({a: 1, b: 2}));
+      } catch (e) {};
+      try {
+        assertThat({a: 1, b: 'foobar'}, EqDict({a: 1, b: Contains(Eq('z'))}));
+      } catch (e) {};
+      try {
+        assertThat({a: 1, b: 'foobar'}, EqDict({a: 1, b: Not(Contains(Eq('a')))}));
       } catch (e) {};
     </script>
   </body>
