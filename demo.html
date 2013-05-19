@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>matches test page</title>
+    <script src='matches.js'></script>
+  </head>
+  <body>
+    <script type='text/javascript'>
+      assertThat(5, Eq(5));
+      assertThat('asfd', Contains(Eq('d')));
+      assertThat({life: 42}, Contains(Eq(42)));
+    </script>
+  </body>
+</html>
