@@ -21,6 +21,21 @@
       try {
         assertThat({life: 42}, Not(Contains(Eq(42))));
       } catch (e) {};
+      try {
+        assertThat([1, 2, 3], Length(4));
+      } catch (e) {};
+      try {
+        assertThat([0, 2, 3], EqArray([1, 2, 3]));
+      } catch (e) {};
+      try {
+        assertThat([1, 2, 3], EqArray([_, _, 4]));
+      } catch (e) {};
+      try {
+        assertThat([[0, 1], 2, 3], EqArray([EqArray([0, 1]), _, 4]));
+      } catch (e) {};
+      try {
+        assertThat([[0, 1], 2, [3, 4]], EqArray([EqArray([0, 1]), _, EqArray([4, 5])]));
+      } catch (e) {};
     </script>
   </body>
 </html>

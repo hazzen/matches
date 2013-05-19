@@ -41,6 +41,14 @@
     return m;
   };
 
+  var ensureIsMatcher = function(m) {
+    if (!isMatcher(m)) {
+      // TODO: use things other than Eq when warranted.
+      m = new Eq(m);
+    }
+    return m;
+  };
+
 
   /**
    * StringLogger.
@@ -84,6 +92,19 @@
   };
 
 
+  var IndentLines = function(indent, logger) {
+    var indentStr = (new Array(1 + indent)).join(' ');
+    return function() {
+      var newArgs = [];
+      for (var i = 0; i < arguments.length; i++) {
+        var str = '' + arguments[i];
+        newArgs.push(str.replace(/\n/g, '\n' + indentStr));
+      }
+      logger.apply(null, newArgs);
+    };
+  };
+
+
   /**
    * Stringifier.
    *
@@ -98,7 +119,7 @@
     if (Array.isArray(obj)) {
       logger(indentStr, '[\n');
       for (var i = 0; i < obj.length; i++) {
-        Stringifier.printImpl_(obj[i], indent + 2, Chomp(indent + 2, logger));
+        Stringifier.printImpl_(obj[i], indent + 2, logger);
         logger(',\n');
       }
       logger(indentStr, ']');
@@ -111,6 +132,10 @@
       logger(indentStr, '' + obj);
     } else if (obj.constructor == String) {
       logger(indentStr, '"', obj, '"');
+    } else if (isMatcher(obj)) {
+      logger(indentStr, 'Matcher(');
+      obj.describeTo(IndentLines(indent, logger));
+      logger(')');
     } else {
       logger(indentStr, '{\n');
       for (var key in obj) {
@@ -126,6 +151,23 @@
     Stringifier.printImpl_(obj, 0, logger);
   };
 
+
+  /** Ignore matcher; matches anything. */
+  var Ignore = function() {
+  };
+  Ignore.make = function() { return new Ignore(); };
+
+  Ignore.prototype.matchAndDescribe = function(val, logger) {
+    return true;
+  };
+
+  Ignore.prototype.describeTo = function(logger) {
+    logger('is anything');
+  };
+
+  Ignore.prototype.describeNegationTo = function(logger) {
+    logger('is nothing (impossible!)');
+  };
 
 
   /** Eq matcher; matches val and only val. */
@@ -210,6 +252,82 @@
     this.matcher_.describeTo(logger);
   };
 
+
+  /**
+   * Length matcher; expects val has specified length.
+   */
+  var Length = function(val) {
+    this.val_ = val;
+  };
+  Length.make = function(a) { return new Length(a); };
+
+  Length.prototype.matchAndDescribe = function(val, logger) {
+    if (this.val_ != val.length) {
+      logger('which has length ', val.length);
+      return false;
+    }
+    return true;
+  };
+
+  Length.prototype.describeTo = function(logger) {
+    logger('has length ', this.val_);
+  };
+
+  Length.prototype.describeNegationTo = function(logger) {
+    logger('has length other than ', this.val_);
+  };
+
+  /**
+   * Contains matcher; expects val contains something matching matcher.
+   *
+   * NOTE: If the matched object is an object with a property "length", this
+   * method will assume it is an array-like object.
+   */
+  var EqArray = function(arr) {
+    this.arr_ = arr;
+  };
+  EqArray.make = function(a) { return new EqArray(a); };
+
+  EqArray.prototype.matchAndDescribe = function(val, logger) {
+    if (!Array.isArray(val)) {
+      logger('which isn\'t an array');
+      return false;
+    }
+    if (val.length != this.arr_.length) {
+      logger('which has the wrong length; found ', val.length, ' and expected ',
+             this.arr_.length);
+      return false;
+    }
+    for (var i = 0; i < this.arr_.length; i++) {
+      var ithMatcher = ensureIsMatcher(this.arr_[i]);
+      var logObj = thatHelper(val[i], ithMatcher);
+      if (logObj) {
+        logger('which doesn\'t match at at index ', i, ': <\n  ');
+        logObj.logTo(IndentLines(2, logger));
+        logger('\n>');
+        return false;
+      }
+    }
+    return true;
+  };
+
+  EqArray.prototype.describeTo = function(logger) {
+    logger('is an array with elements ');
+    Stringifier.print(this.arr_, logger);
+  };
+
+  EqArray.prototype.describeNegationTo = function(logger) {
+    logger('is an array different than ');
+    Stringifier.print(this.arr_, logger);
+  };
+
+
+  /**
+   * thatHelper, main match function implementation.
+   *
+   * Tries to match val using matcher; on failure, returns a StringLogger of
+   * the errors. Otherwise returns null.
+   */
   var thatHelper = function(val, matcher) {
     // Horribly inefficient to do all this logging, don't care for now.
     matcher = throwIfNotMatcher(matcher);
@@ -219,7 +337,13 @@
     matcher.describeTo(logger);
     logger('\nActual: ');
     Stringifier.print(val, logger);
-    var matched = matcher.matchAndDescribe(val, logger);
+
+    var logMatch = new StringLogger();
+    var matched = matcher.matchAndDescribe(val, logMatch.logFn.bind(logMatch));
+    if (logMatch.contents()) {
+      logger('\n');
+      logMatch.logTo(logger);
+    }
     return matched ? null : logObj;
   };
 
@@ -245,11 +369,15 @@
   };
 
 
+  exports._ = Ignore.make();
   exports.Eq = Eq.make;
   exports.Not = Not.make;
   exports.Null = Null;
   exports.Undefined = Undefined;
   exports.Contains = Contains.make;
+  exports.Length = Length.make;
+  exports.EqArray = EqArray.make;
+
   exports.that = that;
   exports.assertThat = assertThat;
 
