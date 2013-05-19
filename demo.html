@@ -6,9 +6,21 @@
   </head>
   <body>
     <script type='text/javascript'>
-      assertThat(5, Eq(5));
-      assertThat('asfd', Contains(Eq('d')));
-      assertThat({life: 42}, Contains(Eq(42)));
+      try {
+        assertThat(5, Eq(6));
+      } catch (e) {};
+      try {
+        assertThat('asfd', Contains(Eq('z')));
+      } catch (e) {};
+      try {
+        assertThat({life: 42}, Contains(Eq(1337)));
+      } catch (e) {};
+      try {
+        assertThat(new Date(), Null);
+      } catch (e) {};
+      try {
+        assertThat({life: 42}, Not(Contains(Eq(42))));
+      } catch (e) {};
     </script>
   </body>
 </html>

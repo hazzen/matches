@@ -1,5 +1,28 @@
 (function(exports) {
 
+  /** Generic helpers. */
+  var nullFn = function() {};
+  var range = function(endOrStart, opt_end, opt_step) {
+    var end = opt_end == null ? endOrStart : opt_end;
+    var start = opt_end == null ? 0 : endOrStart;
+    var step = opt_step || 1;
+    var arr = [];
+    while (start < end) {
+      arr.push(start);
+      start += step;
+    }
+    return arr;
+  };
+  var sum = function() {
+    var v = 0;
+    for (var i = 0; i < arguments.length; i++) {
+      v += arguments[i];
+    }
+    return v;
+  };
+
+
+
   var BaseMatcher = function() {};
   BaseMatcher.prototype.describeNegationTo = function(logger) {
     logger('not(');
@@ -19,24 +42,90 @@
   };
 
 
-  var ConsoleLogger = function() {
+  /**
+   * StringLogger.
+   *
+   * Logger implementation that buffers all logs internally and can either
+   * output the result to another logger or to a string.
+   */
+  var StringLogger = function() {
     this.logged_ = [];
   };
 
-  ConsoleLogger.prototype.logFn = function() {
+  StringLogger.prototype.logFn = function() {
     Array.prototype.push.apply(this.logged_, arguments);
   };
 
-  ConsoleLogger.prototype.logTo = function(logger) {
-    logger(this.logged_.join(''));
+  StringLogger.prototype.contents = function() {
+    return this.logged_.join('');
   };
 
-  ConsoleLogger.prototype.write = function() {
-    console.log(this.logged_.join(''));
+  StringLogger.prototype.logTo = function(logger) {
+    logger.apply(null, this.logged_);
   };
 
 
-  var nullFn = function() {};
+  var Chomp = function(num, logger) {
+    return function() {
+      var newArgs = [];
+      for (var i = 0; i < arguments.length; i++) {
+        var str = '' + arguments[i];
+        if (num == 0) {
+          newArgs.push(str);
+        } else if (str.length <= num) {
+          num -= str.length;
+        } else {
+          newArgs.push(str.substr(num));
+          num = 0;
+        }
+      }
+      logger.apply(null, newArgs);
+    };
+  };
+
+
+  /**
+   * Stringifier.
+   *
+   * Pretty-print objects of any kind.
+   *
+   * Or, at least, try to.
+   */
+  var Stringifier = {};
+
+  Stringifier.printImpl_ = function(obj, indent, logger) {
+    var indentStr = (new Array(1 + indent)).join(' ');
+    if (Array.isArray(obj)) {
+      logger(indentStr, '[\n');
+      for (var i = 0; i < obj.length; i++) {
+        Stringifier.printImpl_(obj[i], indent + 2, Chomp(indent + 2, logger));
+        logger(',\n');
+      }
+      logger(indentStr, ']');
+    } else if (obj == null ||
+               obj.constructor == Boolean ||
+               obj.constructor == Date ||
+               obj.constructor == Function ||
+               obj.constructor == Number ||
+               obj.constructor == RegExp) {
+      logger(indentStr, '' + obj);
+    } else if (obj.constructor == String) {
+      logger(indentStr, '"', obj, '"');
+    } else {
+      logger(indentStr, '{\n');
+      for (var key in obj) {
+        logger('  ', indentStr, key, ': ');
+        Stringifier.printImpl_(obj[key], indent + 2, Chomp(indent + 2, logger));
+        logger(',\n');
+      }
+      logger(indentStr, '}');
+    }
+  };
+
+  Stringifier.print = function(obj, logger) {
+    Stringifier.printImpl_(obj, 0, logger);
+  };
+
 
 
   /** Eq matcher; matches val and only val. */
@@ -49,9 +138,15 @@
     return val === this.val_;
   };
 
-  Eq.prototype.describeTo = function(logger) { logger('is ', this.val_); };
+  Eq.prototype.describeTo = function(logger) {
+    logger('is ');
+    Stringifier.print(this.val_, logger);
+  };
 
-  Eq.prototype.describeNegationTo = function(logger) { logger('is\'nt ', this.val_); };
+  Eq.prototype.describeNegationTo = function(logger) {
+    logger('is\'nt ');
+    Stringifier.print(this.val_, logger);
+  };
 
 
   /** Null matcher; matches null and only null. */
@@ -118,12 +213,14 @@
   var thatHelper = function(val, matcher) {
     // Horribly inefficient to do all this logging, don't care for now.
     matcher = throwIfNotMatcher(matcher);
-    var logger = new ConsoleLogger();
-    logger.logFn('Expected: ');
-    matcher.describeTo(logger.logFn.bind(logger));
-    logger.logFn('\nActual: ', val);
+    var logObj = new StringLogger();
+    var logger = logObj.logFn.bind(logObj);
+    logger('Expected: ');
+    matcher.describeTo(logger);
+    logger('\nActual: ');
+    Stringifier.print(val, logger);
     var matched = matcher.matchAndDescribe(val, logger);
-    return matched ? null : logger;
+    return matched ? null : logObj;
   };
 
 
@@ -135,9 +232,9 @@
   };
 
   var assertThat = function(val, matcher) {
-    var logger = thatHelper(val, matcher);
-    if (logger) {
-      logger.write();
+    var logObj = thatHelper(val, matcher);
+    if (logObj) {
+      console.log(logObj.contents());
       throw Error('Assertion error!');
     }
   };
