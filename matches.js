@@ -1,6 +1,10 @@
 (function(exports) {
 
   /** Generic helpers. */
+  var defaultLogger = function(contents) {
+    console.log(contents);
+  };
+
   var nullFn = function() {};
   var range = function(endOrStart, opt_end, opt_step) {
     var end = opt_end == null ? endOrStart : opt_end;
@@ -47,6 +51,10 @@
       m = new Eq(m);
     }
     return m;
+  };
+
+  var logMatchesTo = function(logger) {
+    defaultLogger = logger;
   };
 
 
@@ -436,55 +444,94 @@
   };
   EqDict.make = function(d) { return new EqDict(d); };
 
-  EqDict.prototype.matchAndDescribe = function(val, logger) {
+  EqDict.prototype.dictMatch_ = function(val, logger) {
     var keys = Object.keys(val);
     var matchedKeys = {};
     var unexpected = [];
     var header = false;
     var matched = true;
     for (var i = 0; i < keys.length; i++) {
-      if (this.dict_) {
-        var key = keys[i];
-        if (key in this.dict_) {
-          var keyMatch = ensureIsMatcher(this.dict_[key]);
-          var valLogger = new StringLogger();
-          matchedKeys[key] = true;
-          if (!keyMatch.matchAndDescribe(val[key], valLogger.logFn.bind(valLogger))) {
-            matched = false;
-            if (!header) {
-              logger('which doesn\'t match for these keys:\n');
-              header = true;
-            } else {
-              logger(',\n');
-            }
-            logger('key ', key);
-            if (valLogger.contents()) {
-              logger(' ');
-              valLogger.logTo(logger);
-            }
+      var key = keys[i];
+      if (key in this.dict_) {
+        var keyMatch = ensureIsMatcher(this.dict_[key]);
+        var valLogger = new StringLogger();
+        matchedKeys[key] = true;
+        if (!keyMatch.matchAndDescribe(val[key], valLogger.logFn.bind(valLogger))) {
+          matched = false;
+          if (!header) {
+            logger('which doesn\'t match for these keys:\n');
+            header = true;
+          } else {
+            logger(',\n');
           }
-        } else {
-          unexpected.push(key);
+          logger('key ', key);
+          if (valLogger.contents()) {
+            logger(' ');
+            valLogger.logTo(logger);
+          }
         }
       } else {
-        throw 'Whoops, have yet to implement KeyVal matchers';
+        unexpected.push(key);
       }
     }
-    if (unexpected.length) {
-      matched = false;
-      logger('which had unexpected keys ');
-      Stringifier.print(unexpected, logger);
-    }
-    if (this.dict_) {
-      var missing = Object.keys(this.dict_);
-      missing = missing.filter(function(k) { return !(k in matchedKeys); });
-      if (missing.length) {
+    var missing = Object.keys(this.dict_);
+    missing = missing.filter(function(k) { return !(k in matchedKeys); });
+    matched = matched && !missing.length && !unexpected.length;
+    return {matched: matched, unexpected: unexpected, missing: missing};
+  };
+
+  EqDict.prototype.matchersMatch_ = function(val, logger) {
+    var keys = Object.keys(val);
+    var unmatchedMatchers = {};
+    this.matchers_.forEach(function(m, i) { unmatchedMatchers[i] = true; });
+    var unexpected = [];
+    var header = false;
+    var matched = true;
+    for (var i = 0; i < keys.length; i++) {
+      var kv = {key: keys[i], val: val[keys[i]]};
+      var valLogger = new StringLogger();
+      var foundMatch = false;
+      for (var j = 0; j < this.matchers_.length; j++) {
+        var keyMatch = this.matchers_[j];
+        if (keyMatch.matchAndDescribe(kv, valLogger.logFn.bind(valLogger))) {
+          foundMatch = true;
+          delete unmatchedMatchers[j];
+        }
+      }
+      if (!foundMatch) {
         matched = false;
-        logger('which didn\'t have expected keys ');
-        Stringifier.print(missing, logger);
+        if (!header) {
+          logger('which had not matcher for these keys:\n');
+          header = true;
+        } else {
+          logger(',\n');
+        }
+        logger('key ', kv.key);
       }
     }
-    return matched;
+    var missing = Object.keys(unmatchedMatchers).map(function(index) {
+      return this.matchers_[index];
+    }, this);
+    matched = matched && !missing.length && !unexpected.length;
+    return {matched: matched, unexpected: unexpected, missing: missing};
+  };
+
+  EqDict.prototype.matchAndDescribe = function(val, logger) {
+    var matchedStruct;
+    if (this.dict_) {
+      matchedStruct = this.dictMatch_(val, logger);
+    } else {
+      matchedStruct = this.matchersMatch_(val, logger);
+    }
+    if (matchedStruct.unexpected.length) {
+      logger('\nwhich had unexpected keys ');
+      Stringifier.print(matchedStruct.unexpected, logger);
+    }
+    if (matchedStruct.missing.length) {
+      logger('\nwhich didn\'t have expected keys ');
+      Stringifier.print(matchedStruct.missing, logger);
+    }
+    return matchedStruct.matched;
   };
 
   EqDict.prototype.describeTo = function(logger) {
@@ -538,7 +585,7 @@
   var assertThat = function(val, matcher) {
     var logObj = thatHelper(val, matcher);
     if (logObj) {
-      console.log(logObj.contents());
+      defaultLogger(logObj.contents());
       throw Error('Assertion error!');
     }
   };
@@ -578,5 +625,6 @@
 
   exports.that = that;
   exports.assertThat = assertThat;
+  exports.logMatchesTo = logMatchesTo;
 
 })(window.exports ? window.exports : window);

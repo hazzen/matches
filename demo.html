@@ -3,72 +3,74 @@
   <head>
     <title>matches test page</title>
     <script src='matches.js'></script>
+    <style type='text/css'>
+      .logger {
+        white-space: pre;
+        font-family: monospace;
+      }
+      .logger > div {
+        margin-bottom: 1em;
+      }
+      .logger .error {
+        color: red;
+      }
+    </style>
   </head>
   <body>
     <script type='text/javascript'>
-      try {
-        assertThat(5, Eq(6));
-      } catch (e) {};
-      try {
-        assertThat(9, Gt(9));
-      } catch (e) {};
-      try {
-        assertThat(8, Ge(9));
-      } catch (e) {};
-      try {
-        assertThat(9, Lt(9));
-      } catch (e) {};
-      try {
-        assertThat(9, Le(8));
-      } catch (e) {};
-      try {
-        assertThat('asfd', Contains(Eq('z')));
-      } catch (e) {};
-      try {
-        assertThat({life: 42}, Contains(Eq(1337)));
-      } catch (e) {};
-      try {
-        assertThat(new Date(), Null);
-      } catch (e) {};
-      try {
-        assertThat({life: 42}, Not(Contains(Eq(42))));
-      } catch (e) {};
-      try {
-        assertThat([1, 2, 3], Length(4));
-      } catch (e) {};
-      try {
-        assertThat([0, 2, 3], EqArray([1, 2, 3]));
-      } catch (e) {};
-      try {
-        assertThat([1, 2, 3], EqArray([_, _, 4]));
-      } catch (e) {};
-      try {
-        assertThat([1, 2, 3], EqArray([_, _, Lt(2)]));
-      } catch (e) {};
-      try {
-        assertThat([[0, 1], 2, 3], EqArray([EqArray([0, 1]), _, 4]));
-      } catch (e) {};
-      try {
-        assertThat([[0, 1], 2, [3, 4]], EqArray([EqArray([0, 1]), _, EqArray([4, 5])]));
-      } catch (e) {};
-      try {
-        assertThat({a: 1, b: 2, c: 3}, Keys(EqArray(['a', 'b', 'd'])));
-      } catch (e) {};
-      try {
-        assertThat({a: 1, b: 2, c: 3}, EqDict({a: 1, b: 2, c: 4}));
-      } catch (e) {};
-      try {
-        assertThat({a: 1, b: 2}, EqDict({a: 1, b: 2, c: 4}));
-      } catch (e) {};
-      try {
-        assertThat({a: 1, b: 2, c: 3}, EqDict({a: 1, b: 2}));
-      } catch (e) {};
-      try {
-        assertThat({a: 1, b: 'foobar'}, EqDict({a: 1, b: Contains(Eq('z'))}));
-      } catch (e) {};
-      try {
-        assertThat({a: 1, b: 'foobar'}, EqDict({a: 1, b: Not(Contains(Eq('a')))}));
-      } catch (e) {};
+      var loggedContent = '';
+      var logCapture = function(content) {
+        loggedContent = content;
+      };
+      logMatchesTo(logCapture);
+
+      var logDiv = document.createElement('div');
+      logDiv.className = 'logger';
+      document.body.appendChild(logDiv);
+
+      var runMatch = function(code) {
+        loggedContent = '';
+        var line = document.createElement('div');
+        line.innerText = code;
+        logDiv.appendChild(line);
+        try {
+          eval(code);
+        } catch (e) {
+          var errorLine = document.createElement('div');
+          errorLine.innerText = loggedContent;
+          errorLine.className = 'error';
+          line.appendChild(errorLine);
+        };
+      };
+      runMatch('assertThat(5, Eq(6));');
+      runMatch('assertThat(9, Gt(9));');
+      runMatch('assertThat(8, Ge(9));');
+      runMatch('assertThat(9, Lt(9));');
+      runMatch('assertThat(9, Le(8));');
+      runMatch('assertThat("asfd", Contains(Eq("z")));');
+      runMatch('assertThat({life: 42}, Contains(Eq(1337)));');
+      runMatch('assertThat(new Date(), Null);');
+      runMatch('assertThat({life: 42}, Not(Contains(Eq(42))));');
+      runMatch('assertThat([1, 2, 3], Length(4));');
+      runMatch('assertThat([0, 2, 3], EqArray([1, 2, 3]));');
+      runMatch('assertThat([1, 2, 3], EqArray([_, _, 4]));');
+      runMatch('assertThat([1, 2, 3], EqArray([_, _, Lt(2)]));');
+      runMatch('assertThat([[0, 1], 2, 3], EqArray([EqArray([0, 1]), _, 4]));');
+      runMatch('assertThat([[0, 1], 2, [3, 4]], EqArray([EqArray([0, 1]), _,' +
+               'EqArray([4, 5])]));');
+      runMatch('assertThat({a: 1, b: 2, c: 3}, ' +
+               'Keys(EqArray(["a", "b","d"])));');
+      runMatch('assertThat({a: 1, b: 2, c: 3}, EqDict({a: 1, b: 2, c: 4}));');
+      runMatch('assertThat({a: 1, b: 2}, EqDict({a: 1, b: 2, c: 4}));');
+      runMatch('assertThat({a: 1, b: 2, c: 3}, EqDict({a: 1, b: 2}));');
+      runMatch('assertThat({a: 1, b: "foobar"}, ' +
+               'EqDict({a: 1, b: Contains(Eq("z"))}));');
+      runMatch('assertThat({a: 1, b: "foobar"}, ' +
+               'EqDict({a: 1, b: Not(Contains(Eq("a")))}));');
+      runMatch('assertThat({a: 1, b: "foobar"}, ' +
+               'EqDict(KeyVal("a", 1)));');
+      runMatch('assertThat({a: 1, b: "foobar"}, ' +
+               'EqDict(KeyVal("a", 2)));');
     </script>
   </body>
 </html>
