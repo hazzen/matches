@@ -26,14 +26,6 @@
   };
 
 
-
-  var BaseMatcher = function() {};
-  BaseMatcher.prototype.describeNegationTo = function(logger) {
-    logger('not(');
-    this.describeTo(logger);
-    logger(')');
-  };
-
   var isMatcher = function(m) {
     return m && m.describeTo && m.describeNegationTo && m.matchAndDescribe;
   };
@@ -185,7 +177,8 @@
   Eq.make = function(val) { return new Eq(val); };
 
   Eq.prototype.matchAndDescribe = function(val, logger) {
-    return val === this.val_;
+    // TODO: support nice-equals for other types, maybe?
+    return val == this.val_;
   };
 
   Eq.prototype.describeTo = function(logger) {
@@ -196,6 +189,76 @@
   Eq.prototype.describeNegationTo = function(logger) {
     logger('is\'nt ');
     Stringifier.print(this.val_, logger);
+  };
+
+  var StrictEq = function(val) {
+    this.val_ = val;
+  };
+  StrictEq.make = function(val) { return new StrictEq(val); };
+
+  StrictEq.prototype.matchAndDescribe = function(val, logger) {
+    return val === this.val_;
+  };
+
+  StrictEq.prototype.describeTo = function(logger) {
+    logger('strictly is ');
+    Stringifier.print(this.val_, logger);
+  };
+
+  StrictEq.prototype.describeNegationTo = function(logger) {
+    logger('strictly is\'nt ');
+    Stringifier.print(this.val_, logger);
+  };
+
+
+  /** AndOrBase matcher; combines matchers. */
+  var AndOrBase = function(args, all) {
+    this.all = !!all;
+    this.matchers = args;
+  };
+
+  AndOrBase.prototype.matchAndDescribe = function(val, logger) {
+    var yesMatches = new StringLogger();
+    var noMatches = new StringLogger();
+    var matches = this.all;
+    for (var i = 0; i < this.matchers.length; i++) {
+      var matchLogger = new StringLogger();
+      var ithMatched = ensureIsMatcher(this.matchers[i]).matchAndDescribe(
+          val, matchLogger);
+      var logObj = ithMatched ? yesMatches : noMatches;
+      matchLogger.logTo(logObj.logFn.bind(logObj));
+      matches = (!this.all || matches) && ithMatched;
+    }
+    (matches ? yesMatches : noMatches).logTo(logger);
+    return matches;
+  };
+
+  AndOrBase.prototype.describeImpl_ = function(negate, logger) {
+    negate ? logger('doesn\'t match <\n')
+           : logger('matches <\n');
+    for (var i = 0; i < this.matchers.length; i++) {
+      if (i != 0) logger(negate == this.all ? 'OR' : 'AND', '\n');
+      Stringifier.printImpl_(this.matchers[i], 2, logger);
+      logger(',\n');
+    }
+    logger('>');
+  };
+
+  AndOrBase.prototype.describeTo = function(logger) {
+    this.describeImpl_(false, logger);
+  };
+
+  AndOrBase.prototype.describeNegationTo = function(logger) {
+    this.describeImpl_(true, logger);
+  };
+
+
+  /** And matcher; combines matchers. */
+  MakeAnd = function() {
+    return new AndOrBase(Array.prototype.slice.apply(arguments), true);
+  };
+  MakeOr = function() {
+    return new AndOrBase(Array.prototype.slice.apply(arguments), false);
   };
 
 
@@ -220,11 +283,11 @@
 
 
   /** Null matcher; matches null and only null. */
-  var Null = Eq.make(null);
+  var Null = StrictEq.make(null);
 
 
   /** Undefined matcher; matches undefined and only undefined. */
-  var Undefined = Eq.make(undefined);
+  var Undefined = StrictEq.make(undefined);
 
 
   /** Not matcher; wraps and negates another matcher. */
@@ -253,7 +316,7 @@
    * method will assume it is an array-like object.
    */
   var Contains = function(matcher) {
-    this.matcher_ = throwIfNotMatcher(matcher, 'Contains');
+    this.matcher_ = ensureIsMatcher(matcher);
   };
   Contains.make = function(m) { return new Contains(m); };
 
@@ -598,6 +661,7 @@
 
   exports._ = Ignore.make();
   exports.Eq = Eq.make;
+  exports.StrictEq = StrictEq.make;
   exports.Le = function(v) {
     return new PredMatcher(
       function(t) { return t <= v; },
@@ -612,8 +676,17 @@
   };
   exports.Ge = function(v) { return new Not(exports.Lt(v)); };
   exports.Gt = function(v) { return new Not(exports.Le(v)); };
+  exports.MatchesRe = function(re) {
+    re = new RegExp(re);
+    return new PredMatcher(
+      function(v) { return re.test(v); },
+      'matches less than ' + v,
+      'is greater than or equal to ' + v);
+  };
   exports.Not = Not.make;
   exports.Null = Null;
+  exports.And = MakeAnd;
+  exports.Or = MakeOr;
   exports.Undefined = Undefined;
   exports.Contains = Contains.make;
   exports.Length = Length.make;

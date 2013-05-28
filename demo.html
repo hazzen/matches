@@ -14,6 +14,9 @@
       .logger .error {
         color: red;
       }
+      .logger .pass {
+        color: green;
+      }
     </style>
   </head>
   <body>
@@ -33,14 +36,16 @@
         var line = document.createElement('div');
         line.innerText = code;
         logDiv.appendChild(line);
+        var resultLine = document.createElement('div');
         try {
           eval(code);
+          resultLine.innerText = 'pass';
+          resultLine.className = 'pass';
         } catch (e) {
-          var errorLine = document.createElement('div');
-          errorLine.innerText = loggedContent;
-          errorLine.className = 'error';
-          line.appendChild(errorLine);
+          resultLine.innerText = 'Error:\n' + loggedContent;
+          resultLine.className = 'error';
         };
+        line.appendChild(resultLine);
       };
       runMatch('assertThat(5, Eq(6));');
       runMatch('assertThat(9, Gt(9));');
@@ -71,6 +76,10 @@
                'EqDict(KeyVal("a", 1)));');
       runMatch('assertThat({a: 1, b: "foobar"}, ' +
                'EqDict(KeyVal("a", 2)));');
+      runMatch('assertThat(5, And(Lt(6), Gt(4)));');
+      runMatch('assertThat(5, Not(And(Lt(6), Gt(4))));');
+      runMatch('assertThat(5, Or(Lt(6), Gt(4)));');
+      runMatch('assertThat(5, Not(Or(Lt(6), Gt(4))));');
     </script>
   </body>
 </html>
